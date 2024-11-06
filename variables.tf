@@ -1,15 +1,10 @@
 variable "default_tags" {
-  default = {
-    "Name"  = "jcaranay-vpc"
-    "Owner" = "jcaranay"
-  }
   type        = map(any)
   description = "Default tags to be applied to all AWS resources"
 }
 
 variable "namespace" {
-  type    = string
-  default = "JASN"
+  type = string
 }
 
 variable "env" {
@@ -34,11 +29,6 @@ variable "remote_data_sources" {
     region = string
   }))
   default = {
-    network = {
-      bucket = "acs730-assignment-jcaranay"
-      key    = "/networking/terraform.tfstate"
-      region = "us-east-1"
-    }
   }
 }
 
@@ -52,6 +42,8 @@ variable "bastion_hosts" {
     has_user_data = bool
     user_data     = string
   }))
+  default = {
+  }
 }
 
 variable "public_instances" {
@@ -64,6 +56,8 @@ variable "public_instances" {
     has_user_data = bool
     user_data     = string
   }))
+  default = {
+  }
 }
 
 
@@ -78,6 +72,8 @@ variable "private_instances" {
     has_user_data = bool
     user_data     = string
   }))
+  default = {
+  }
 }
 
 variable "key_pairs" {
@@ -86,6 +82,8 @@ variable "key_pairs" {
     key_name            = string
     public_key_location = string
   }))
+  default = {
+  }
 }
 
 
@@ -104,6 +102,8 @@ variable "security_group_ingress_ssh" {
     remote_key  = string
     source      = string
   }))
+  default = {
+  }
 }
 
 variable "security_group_ingress_http_ec2" {
@@ -111,6 +111,8 @@ variable "security_group_ingress_http_ec2" {
     description = string
     source      = string
   }))
+  default = {
+  }
 }
 
 variable "security_group_ingress_http_sg" {
@@ -118,6 +120,8 @@ variable "security_group_ingress_http_sg" {
     description = string
     source      = string
   }))
+  default = {
+  }
 }
 
 
@@ -128,6 +132,8 @@ variable "alb_target_groups" {
     port     = number
     protocol = string
   }))
+  default = {
+  }
 }
 
 
@@ -136,6 +142,8 @@ variable "alb_target_group_attachments" {
     alb_tg_key = string
     ec2_key    = string
   }))
+  default = {
+  }
 }
 
 variable "albs" {
@@ -144,4 +152,6 @@ variable "albs" {
     security_groups = list(string)
     subnets         = list(string)
   }))
+  default = {
+  }
 }
