@@ -91,18 +91,18 @@ resource "aws_vpc_security_group_ingress_rule" "allow_ssh" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "allow_http_ec2" {
-  for_each          = var.security_group_ingress_http_ec2
+  for_each          = var.security_group_ingress_http_ec2_to_ec2
   security_group_id = aws_security_group.this[each.key].id
   description       = each.value.description
   cidr_ipv4         = (each.value.source == "all") ? "0.0.0.0/0" : "${aws_instance.this[each.value.source].private_ip}/32"
   from_port         = 80
   to_port           = 80
   ip_protocol       = "tcp"
-  depends_on        = [aws_instance.this]
+  depends_on        = [aws_instance.this, aws_security_group.this]
 }
 
 resource "aws_vpc_security_group_ingress_rule" "allow_http_sg" {
-  for_each                     = var.security_group_ingress_http_sg
+  for_each                     = var.security_group_ingress_http_to_ec2_using_sg
   security_group_id            = aws_security_group.this[each.key].id
   description                  = each.value.description
   referenced_security_group_id = aws_security_group.this[each.value.source].id
@@ -140,10 +140,11 @@ resource "aws_lb_target_group_attachment" "example" {
 resource "aws_lb" "this" {
   for_each           = var.albs
   name               = each.value.name
-  internal           = true
+  internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.this["alb_sg"].id]
-  subnets            = [local.remote_states["network"].details.subnets["vpc1_prvsub1"], local.remote_states["network"].details.subnets["vpc1_prvsub2"]]
+  security_groups    = [for sg in each.value.security_groups : aws_security_group.this[sg].id]
+  subnets            = [for subnet in each.value.subnets : local.remote_states["network"].details.subnets[subnet]]
+
 
   enable_deletion_protection = false
 
@@ -162,6 +163,6 @@ resource "aws_lb_listener" "this" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.this["alb_tg1"].arn
+    target_group_arn = aws_lb_target_group.this[each.value.target_group_key].arn
   }
 }

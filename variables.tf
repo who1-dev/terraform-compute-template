@@ -106,7 +106,7 @@ variable "security_group_ingress_ssh" {
   }
 }
 
-variable "security_group_ingress_http_ec2" {
+variable "security_group_ingress_http_ec2_to_ec2" {
   type = map(object({
     description = string
     source      = string
@@ -115,7 +115,7 @@ variable "security_group_ingress_http_ec2" {
   }
 }
 
-variable "security_group_ingress_http_sg" {
+variable "security_group_ingress_http_to_ec2_using_sg" {
   type = map(object({
     description = string
     source      = string
@@ -148,9 +148,10 @@ variable "alb_target_group_attachments" {
 
 variable "albs" {
   type = map(object({
-    name            = string
-    security_groups = list(string)
-    subnets         = list(string)
+    name             = string
+    target_group_key = string
+    security_groups  = list(string)
+    subnets          = list(string)
   }))
   default = {
   }
