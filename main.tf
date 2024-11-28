@@ -24,9 +24,9 @@ data "aws_availability_zones" "available" {
 
 locals {
   default_tags  = merge(var.default_tags, { "AppRole" : var.app_role, "Environment" : upper(var.env), "Project" : var.namespace })
-  name_prefix   = upper("${var.namespace}-${var.env}")
+  name_prefix   = "${var.namespace}-${var.env}"
   remote_states = { for k, v in data.terraform_remote_state.this : k => v.outputs }
-  ec2s          = merge(var.bastion_hosts, var.private_instances)
+  ec2s          = merge(var.bastion_hosts, var.public_instances, var.private_instances)
   test          = { for k, v in var.security_group_ingress_ssh : k => v.description }
 }
 
@@ -66,7 +66,7 @@ resource "aws_instance" "this" {
   instance_type               = each.value.instance_type
   key_name                    = aws_key_pair.this[each.value.key_name].key_name
   subnet_id                   = local.remote_states["network"].details.subnets[each.value.subnet_key]
-  vpc_security_group_ids      = [aws_security_group.this[each.key].id]
+  vpc_security_group_ids      = [aws_security_group.this[each.value.sg_key].id]
   associate_public_ip_address = each.value.is_public
   user_data                   = each.value.user_data != "" ? file(each.value.user_data) : ""
   tags = merge(
@@ -82,16 +82,15 @@ resource "aws_vpc_security_group_ingress_rule" "allow_ssh" {
   for_each          = var.security_group_ingress_ssh
   security_group_id = aws_security_group.this[each.key].id
   description       = each.value.description
-  #cidr_ipv4         = (each.value.source) == "all" ? "0.0.0.0/0" : (each.value.is_local) ? "${aws_instance.this[each.value.source].private_ip}/32" : ""
-  cidr_ipv4   = (each.value.source) == "all" ? "0.0.0.0/0" : (each.value.is_local) ? "${aws_instance.this[each.value.source].private_ip}/32" : "${local.remote_states[each.value.remote_key].details.ec2s[each.value.source].private_ip}/32"
-  from_port   = 22
-  to_port     = 22
-  ip_protocol = "tcp"
-  depends_on  = [aws_instance.this]
+  cidr_ipv4         = (each.value.source) == "all" ? "0.0.0.0/0" : (each.value.is_local) ? "${aws_instance.this[each.value.source].private_ip}/32" : "${local.remote_states[each.value.remote_key].details.ec2s[each.value.source].private_ip}/32"
+  from_port         = 22
+  to_port           = 22
+  ip_protocol       = "tcp"
+  depends_on        = [aws_instance.this]
 }
 
 resource "aws_vpc_security_group_ingress_rule" "allow_http_ec2" {
-  for_each          = var.security_group_ingress_http_ec2_to_ec2
+  for_each          = var.security_group_ingress_http_ec2
   security_group_id = aws_security_group.this[each.key].id
   description       = each.value.description
   cidr_ipv4         = (each.value.source == "all") ? "0.0.0.0/0" : "${aws_instance.this[each.value.source].private_ip}/32"
@@ -113,12 +112,13 @@ resource "aws_vpc_security_group_ingress_rule" "allow_http_sg" {
 }
 
 
+#=====================================================================================================================================
 resource "aws_lb_target_group" "this" {
   for_each = var.alb_target_groups
   name     = each.value.name
   port     = each.value.port
   protocol = each.value.protocol
-  vpc_id   = local.remote_states["network"].details.vpcs[each.value.vpc_key].id
+  vpc_id   = local.remote_states[each.value.remote_key].details.vpcs[each.value.vpc_key].id
 
   health_check {
     path                = "/"
@@ -130,7 +130,7 @@ resource "aws_lb_target_group" "this" {
   }
 }
 
-resource "aws_lb_target_group_attachment" "example" {
+resource "aws_lb_target_group_attachment" "this" {
   for_each         = var.alb_target_group_attachments
   target_group_arn = aws_lb_target_group.this[each.value.alb_tg_key].arn
   target_id        = aws_instance.this[each.value.ec2_key].id
@@ -138,14 +138,12 @@ resource "aws_lb_target_group_attachment" "example" {
 }
 
 resource "aws_lb" "this" {
-  for_each           = var.albs
-  name               = each.value.name
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [for sg in each.value.security_groups : aws_security_group.this[sg].id]
-  subnets            = [for subnet in each.value.subnets : local.remote_states["network"].details.subnets[subnet]]
-
-
+  for_each                   = var.albs
+  name                       = each.value.name
+  internal                   = each.value.is_internal
+  load_balancer_type         = "application"
+  security_groups            = [for sg in each.value.security_groups : aws_security_group.this[sg].id]
+  subnets                    = [for subnet in each.value.subnets : local.remote_states[each.value.remote_key].details.subnets[subnet]]
   enable_deletion_protection = false
 
   tags = merge(
@@ -165,4 +163,46 @@ resource "aws_lb_listener" "this" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.this[each.value.target_group_key].arn
   }
+}
+
+resource "aws_launch_template" "this" {
+  for_each      = var.launch_templates
+  name          = each.value.name
+  image_id      = data.aws_ami.latest_amazon_linux.id
+  instance_type = each.value.instance_type
+  key_name      = aws_key_pair.this[each.value.key_name].id
+  user_data     = filebase64(each.value.user_data)
+  network_interfaces {
+    associate_public_ip_address = true
+    security_groups             = [for sg in each.value.security_groups : aws_security_group.this[sg].id]
+  }
+  tag_specifications {
+    resource_type = "instance"
+    tags          = merge(local.default_tags, each.value.tags)
+  }
+}
+
+resource "aws_autoscaling_group" "this" {
+  for_each         = var.auto_scaling_groups
+  name             = each.value.name
+  desired_capacity = each.value.desired_capacity
+  max_size         = each.value.max_size
+  min_size         = each.value.min_size
+  launch_template {
+    id      = aws_launch_template.this[each.value.launch_template_key].id
+    version = "$Latest"
+  }
+  health_check_type         = "EC2"
+  health_check_grace_period = 300
+  vpc_zone_identifier       = [for subnet in each.value.vpc_zone_identifier_subnets : local.remote_states[each.value.remote_key].details.subnets[subnet]]
+  target_group_arns         = [aws_lb_target_group.this[each.value.target_group_arns].arn]
+  tag {
+    key                 = "Name"
+    value               = "Webserver-ASG"
+    propagate_at_launch = true
+  }
+
+
+
+  depends_on = [aws_lb.this, aws_launch_template.this]
 }

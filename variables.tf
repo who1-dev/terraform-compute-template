@@ -14,7 +14,7 @@ variable "env" {
 
 variable "app_role" {
   type    = string
-  default = "Networking"
+  default = "Compute"
 }
 
 variable "region" {
@@ -38,6 +38,7 @@ variable "bastion_hosts" {
     is_public     = bool
     instance_type = string
     subnet_key    = string
+    sg_key        = string
     key_name      = string
     has_user_data = bool
     user_data     = string
@@ -53,6 +54,7 @@ variable "public_instances" {
     instance_type = string
     subnet_key    = string
     key_name      = string
+    sg_key        = string
     has_user_data = bool
     user_data     = string
   }))
@@ -69,6 +71,7 @@ variable "private_instances" {
     instance_type = string
     subnet_key    = string
     key_name      = string
+    sg_key        = string
     has_user_data = bool
     user_data     = string
   }))
@@ -106,7 +109,7 @@ variable "security_group_ingress_ssh" {
   }
 }
 
-variable "security_group_ingress_http_ec2_to_ec2" {
+variable "security_group_ingress_http_ec2" {
   type = map(object({
     description = string
     source      = string
@@ -127,10 +130,11 @@ variable "security_group_ingress_http_to_ec2_using_sg" {
 
 variable "alb_target_groups" {
   type = map(object({
-    name     = string
-    vpc_key  = string
-    port     = number
-    protocol = string
+    name       = string
+    vpc_key    = string
+    port       = number
+    protocol   = string
+    remote_key = string
   }))
   default = {
   }
@@ -149,10 +153,44 @@ variable "alb_target_group_attachments" {
 variable "albs" {
   type = map(object({
     name             = string
+    is_internal      = bool
     target_group_key = string
     security_groups  = list(string)
     subnets          = list(string)
+    remote_key       = string
   }))
   default = {
   }
 }
+
+variable "launch_templates" {
+  type = map(object({
+    name            = string
+    instance_type   = string
+    key_name        = string
+    user_data       = string
+    security_groups = list(string)
+    tags = object({
+      Name = string
+    })
+  }))
+  default = {
+  }
+}
+
+variable "auto_scaling_groups" {
+  type = map(object({
+    name                        = string
+    desired_capacity            = number
+    max_size                    = number
+    min_size                    = number
+    launch_template_key         = string
+    vpc_zone_identifier_subnets = list(string)
+    remote_key                  = string
+    target_group_arns           = string
+  }))
+  default = {
+  }
+}
+
+
